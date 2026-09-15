@@ -61,8 +61,8 @@ func GenerateReport(products []*store.Product) (string, error) {
 func ExportCSV(products []*store.Product) (string, error) {
 	csv := "Name,Category,Price,Users,Score,Website,Description\n"
 	for _, p := range products {
-		csv += fmt.Sprintf("\"%s\",\"%s\",\"%s\",\"%s\",%.1f,\"%s\",\"%s\"\n",
-			p.Name, p.Category, p.Price, p.Users, p.Score, p.Website, p.Description)
+		csv += fmt.Sprintf("\"%s\",\"%s\",\"%s\",\"%s\",\"\",\"%s\",\"%s\"\n",
+			p.Name, p.Category, p.Price, p.Users, p.Website, p.Description)
 	}
 	return csv, nil
 }
