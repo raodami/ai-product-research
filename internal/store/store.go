@@ -193,6 +193,16 @@ func (s *Store) GetTrends(limit int) ([]*Trend, error) {
 	return trends, rows.Err()
 }
 
+func (s *Store) GetProduct(id string) (*Product, error) {
+	var p Product
+	err := s.db.QueryRow("SELECT id, name, description, website, category, price, users FROM products WHERE id = ?", id).
+		Scan(&p.ID, &p.Name, &p.Description, &p.Website, &p.Category, &p.Price, &p.Users)
+	if err != nil {
+		return nil, err
+	}
+	return &p, nil
+}
+
 func (s *Store) DeleteProduct(id string) error {
 	_, err := s.db.Exec("DELETE FROM products WHERE id = ?", id)
 	return err
