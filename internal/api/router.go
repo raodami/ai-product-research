@@ -2,6 +2,7 @@ package api
 
 import (
 	"net/http"
+	"strconv"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -154,17 +155,6 @@ func SetupRoutes(r *gin.Engine, s *store.Store) {
 	// Export endpoints
 	r.GET("/api/export/csv", func(c *gin.Context) {
 		products, _ := s.GetProducts("", 100)
-		products := make([]*store.Product, len(productList))
-		for i, p := range productList {
-			products[i] = &store.Product{
-				Name:        p.Name,
-				Category:    p.Category,
-				Price:       p.Price,
-				Users:       p.Users,
-				Website:     p.Website,
-				Description: p.Description,
-			}
-		}
 		csv, err := analyzer.ExportCSV(products)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
