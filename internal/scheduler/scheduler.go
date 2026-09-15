@@ -7,17 +7,18 @@ import (
 
 	"github.com/robfig/cron/v3"
 	"ai-product-research/internal/scraper"
+	"ai-product-research/internal/store"
 )
 
 type Manager struct {
 	cron   *cron.Cron
-	scraper *scraper.Scraper
+	store  *store.Store
 }
 
-func New() *Manager {
+func New(s *store.Store) *Manager {
 	return &Manager{
-		cron:   cron.New(),
-		scraper: scraper.New(),
+		cron: cron.New(),
+		store: s,
 	}
 }
 
@@ -30,7 +31,18 @@ func (m *Manager) Start() error {
 			log.Printf("[Scheduler] Toolify fetch error: %v", err)
 			return
 		}
-		log.Printf("[Scheduler] Toolify: fetched %d products", len(products))
+		for _, p := range products {
+			m.store.SaveProduct(&store.Product{
+				ID:          fmt.Sprintf("%d", time.Now().UnixNano()),
+				Name:        p.Name,
+				Description: p.Description,
+				Website:     p.Website,
+				Category:    p.Category,
+				Price:       p.Price,
+				Users:       p.Users,
+			})
+		}
+		log.Printf("[Scheduler] Toolify: saved %d products", len(products))
 	})
 	if err != nil {
 		return fmt.Errorf("failed to add Toolify cron job: %w", err)
@@ -44,7 +56,18 @@ func (m *Manager) Start() error {
 			log.Printf("[Scheduler] Product Hunt fetch error: %v", err)
 			return
 		}
-		log.Printf("[Scheduler] Product Hunt: fetched %d products", len(products))
+		for _, p := range products {
+			m.store.SaveProduct(&store.Product{
+				ID:          fmt.Sprintf("%d", time.Now().UnixNano()),
+				Name:        p.Name,
+				Description: p.Description,
+				Website:     p.Website,
+				Category:    p.Category,
+				Price:       p.Price,
+				Users:       p.Users,
+			})
+		}
+		log.Printf("[Scheduler] Product Hunt: saved %d products", len(products))
 	})
 	if err != nil {
 		return fmt.Errorf("failed to add Product Hunt cron job: %w", err)

@@ -2,6 +2,8 @@ package store
 
 import (
 	"database/sql"
+	"fmt"
+	"sync"
 	"time"
 
 	_ "modernc.org/sqlite"
@@ -15,38 +17,33 @@ type Product struct {
 	Category    string    `json:"category"`
 	Price       string    `json:"price"`
 	Users       string    `json:"users"`
-	Founded     string    `json:"founded"`
-	Features    string    `json:"features"`
-	Score       float64   `json:"score"`
-	Source      string    `json:"source"` // toolify/producthunt
 	CreatedAt   time.Time `json:"created_at"`
 }
 
 type Competitor struct {
-	ID          string    `json:"id"`
-	Name        string    `json:"name"`
-	Website     string    `json:"website"`
-	Price       string    `json:"price"`
-	Strengths   string    `json:"strengths"`
-	Weaknesses  string    `json:"weaknesses"`
-	Ranking     int       `json:"ranking"`
-	CreatedAt   time.Time `json:"created_at"`
+	ID         string    `json:"id"`
+	Name       string    `json:"name"`
+	Website    string    `json:"website"`
+	Strengths  string    `json:"strengths"`
+	Weaknesses string    `json:"weaknesses"`
+	Ranking    int       `json:"ranking"`
+	CreatedAt  time.Time `json:"created_at"`
 }
 
 type Trend struct {
 	ID           string    `json:"id"`
 	Keyword      string    `json:"keyword"`
+	Month        string    `json:"month"`
 	SearchVolume int       `json:"search_volume"`
 	GrowthRate   float64   `json:"growth_rate"`
 	Competition  string    `json:"competition"`
 	Opportunity  float64   `json:"opportunity"`
-	Category     string    `json:"category"`
 	CreatedAt    time.Time `json:"created_at"`
 }
 
 type Store struct {
-	db         *sql.DB
-	productMu  sync.RWMutex
+	db        *sql.DB
+	productMu sync.RWMutex
 }
 
 func New(dbPath string) (*Store, error) {
@@ -62,7 +59,7 @@ func New(dbPath string) (*Store, error) {
 	return store, nil
 }
 
-func (s *Store) createTables() error {
+func (s *Store) initSchema() error {
 	schema := `
 	CREATE TABLE IF NOT EXISTS products (
 		id TEXT PRIMARY KEY,
@@ -70,133 +67,98 @@ func (s *Store) createTables() error {
 		description TEXT,
 		website TEXT,
 		category TEXT,
-		price TEXT DEFAULT '',
-		users TEXT DEFAULT '',
-		founded TEXT DEFAULT '',
-		features TEXT,
-		score REAL DEFAULT 0,
-		source TEXT DEFAULT 'toolify',
-		created_at INTEGER DEFAULT 0
+		price TEXT,
+		users INTEGER,
+		created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 	);
 	CREATE TABLE IF NOT EXISTS competitors (
 		id TEXT PRIMARY KEY,
 		name TEXT NOT NULL,
 		website TEXT,
-		price TEXT DEFAULT '',
 		strengths TEXT,
 		weaknesses TEXT,
-		ranking INTEGER DEFAULT 0,
-		created_at INTEGER DEFAULT 0
+		ranking INTEGER,
+		created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 	);
 	CREATE TABLE IF NOT EXISTS trends (
 		id TEXT PRIMARY KEY,
 		keyword TEXT NOT NULL,
-		search_volume INTEGER DEFAULT 0,
-		growth_rate REAL DEFAULT 0,
-		competition TEXT DEFAULT 'medium',
-		opportunity REAL DEFAULT 0,
-		category TEXT DEFAULT '',
-		created_at INTEGER DEFAULT 0
+		month TEXT,
+		search_volume INTEGER,
+		growth_rate REAL,
+		competition TEXT,
+		opportunity REAL,
+		created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 	);
-	CREATE INDEX IF NOT EXISTS idx_products_category ON products(category);
-	CREATE INDEX IF NOT EXISTS idx_products_score ON products(score DESC);
-	CREATE INDEX IF NOT EXISTS idx_trends_keyword ON trends(keyword);
 	`
 	_, err := s.db.Exec(schema)
 	return err
 }
 
-func (s *Store) Close() error {
-	return s.db.Close()
-}
-
 func (s *Store) SaveProduct(p *Product) error {
+	s.productMu.Lock()
+	defer s.productMu.Unlock()
 	_, err := s.db.Exec(
-		"INSERT OR REPLACE INTO products (id, name, description, website, category, price, users, founded, features, score, source, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-		p.ID, p.Name, p.Description, p.Website, p.Category, p.Price, p.Users, p.Founded, p.Features, p.Score, p.Source, time.Now().Unix(),
+		"INSERT OR REPLACE INTO products (id, name, description, website, category, price, users) VALUES (?, ?, ?, ?, ?, ?, ?)",
+		p.ID, p.Name, p.Description, p.Website, p.Category, p.Price, p.Users,
 	)
 	return err
 }
 
 func (s *Store) GetProducts(category string, limit int) ([]*Product, error) {
-	var sqlStr string
-	var args []interface{}
-	
-	if category != "" {
-		sqlStr = "SELECT id, name, description, website, category, price, users, founded, features, score, source, created_at FROM products WHERE category = ? ORDER BY score DESC LIMIT ?"
-		args = append(args, category, limit)
-	} else {
-		sqlStr = "SELECT id, name, description, website, category, price, users, founded, features, score, source, created_at FROM products ORDER BY score DESC LIMIT ?"
-		args = append(args, limit)
-	}
-	func (s *Store) SearchProducts(query, category string, limit int) ([]*Product, error) {
-		s.productMu.RLock()
-		defer s.productMu.RUnlock()
-
-		queryStr := "SELECT id, name, description, website, category, price, users FROM products WHERE 1=1"
-		args := []interface{}{}
-
-		if query != "" {
-			queryStr += " AND (name LIKE ? OR description LIKE ?)"
-			args = append(args, "%"+query+"%", "%"+query+"%")
-		}
-		if category != "" {
-			queryStr += " AND category = ?"
-			args = append(args, category)
-		}
-		queryStr += " ORDER BY created_at DESC LIMIT ?"
-		args = append(args, limit)
-
-		rows, err := s.db.Query(queryStr, args...)
-		if err != nil {
-			return nil, err
-		}
-		defer rows.Close()
-
-		var products []*Product
-		for rows.Next() {
-			var p Product
-			if err := rows.Scan(&p.ID, &p.Name, &p.Description, &p.Website, &p.Category, &p.Price, &p.Users); err != nil {
-				continue
-			}
-			products = append(products, &p)
-		}
-		return products, rows.Err()
-	}
-
-	func (s *Store) GetProducts(category string, limit int) ([]*Product, error) {
-		return s.SearchProducts("", category, limit)
-	}
-	return products, nil
+	return s.SearchProducts("", category, limit)
 }
 
-func (s *Store) GetProduct(id string) (*Product, error) {
-	var p Product
-	var createdAt int64
-	err := s.db.QueryRow("SELECT id, name, description, website, category, price, users, founded, features, score, source, created_at FROM products WHERE id = ?", id).
-		Scan(&p.ID, &p.Name, &p.Description, &p.Website, &p.Category, &p.Price, &p.Users, &p.Founded, &p.Features, &p.Score, &p.Source, &createdAt)
+func (s *Store) SearchProducts(query, category string, limit int) ([]*Product, error) {
+	s.productMu.RLock()
+	defer s.productMu.RUnlock()
+
+	queryStr := "SELECT id, name, description, website, category, price, users FROM products WHERE 1=1"
+	args := []interface{}{}
+
+	if query != "" {
+		queryStr += " AND (name LIKE ? OR description LIKE ?)"
+		args = append(args, "%"+query+"%", "%"+query+"%")
+	}
+	if category != "" {
+		queryStr += " AND category = ?"
+		args = append(args, category)
+	}
+	queryStr += " ORDER BY created_at DESC LIMIT ?"
+	args = append(args, limit)
+
+	rows, err := s.db.Query(queryStr, args...)
 	if err != nil {
 		return nil, err
 	}
-	p.CreatedAt = time.Unix(createdAt, 0)
-	return &p, nil
+	defer rows.Close()
+
+	var products []*Product
+	for rows.Next() {
+		var p Product
+		if err := rows.Scan(&p.ID, &p.Name, &p.Description, &p.Website, &p.Category, &p.Price, &p.Users); err != nil {
+			continue
+		}
+		products = append(products, &p)
+	}
+	return products, rows.Err()
 }
 
-func (s *Store) DeleteProduct(id string) error {
-	_, err := s.db.Exec("DELETE FROM products WHERE id = ?", id)
-	return err
-}
+func (s *Store) GetAnalytics() (map[string]interface{}, error) {
+	var productCount int
+	var categoryCount int
+	s.db.QueryRow("SELECT COUNT(*) FROM products").Scan(&productCount)
+	s.db.QueryRow("SELECT COUNT(DISTINCT category) FROM products").Scan(&categoryCount)
 
-func (s *Store) SaveCompetitor(c *Competitor) error {
-	_, err := s.db.Exec(
-		"INSERT OR REPLACE INTO competitors (id, name, website, price, strengths, weaknesses, ranking, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-		c.ID, c.Name, c.Website, c.Price, c.Strengths, c.Weaknesses, c.Ranking, time.Now().Unix(),
-	)
-	return err
+	return map[string]interface{}{
+		"total_products":   productCount,
+		"total_categories": categoryCount,
+		"avg_users":        0,
+	}, nil
 }
 
 func (s *Store) GetCompetitors(limit int) ([]*Competitor, error) {
-	rows, err := s.db.Query("SELECT id, name, website, price, strengths, weaknesses, ranking, created_at FROM competitors ORDER BY ranking ASC LIMIT ?", limit)
+	rows, err := s.db.Query("SELECT id, name, website, strengths, weaknesses, ranking FROM competitors ORDER BY ranking ASC LIMIT ?", limit)
 	if err != nil {
 		return nil, err
 	}
@@ -205,26 +167,16 @@ func (s *Store) GetCompetitors(limit int) ([]*Competitor, error) {
 	var competitors []*Competitor
 	for rows.Next() {
 		var c Competitor
-		var createdAt int64
-		if err := rows.Scan(&c.ID, &c.Name, &c.Website, &c.Price, &c.Strengths, &c.Weaknesses, &c.Ranking, &createdAt); err != nil {
-			return nil, err
+		if err := rows.Scan(&c.ID, &c.Name, &c.Website, &c.Strengths, &c.Weaknesses, &c.Ranking); err != nil {
+			continue
 		}
-		c.CreatedAt = time.Unix(createdAt, 0)
 		competitors = append(competitors, &c)
 	}
-	return competitors, nil
-}
-
-func (s *Store) SaveTrend(t *Trend) error {
-	_, err := s.db.Exec(
-		"INSERT OR REPLACE INTO trends (id, keyword, search_volume, growth_rate, competition, opportunity, category, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-		t.ID, t.Keyword, t.SearchVolume, t.GrowthRate, t.Competition, t.Opportunity, t.Category, time.Now().Unix(),
-	)
-	return err
+	return competitors, rows.Err()
 }
 
 func (s *Store) GetTrends(limit int) ([]*Trend, error) {
-	rows, err := s.db.Query("SELECT id, keyword, search_volume, growth_rate, competition, opportunity, category, created_at FROM trends ORDER BY opportunity DESC LIMIT ?", limit)
+	rows, err := s.db.Query("SELECT id, keyword, month, search_volume, growth_rate, competition, opportunity FROM trends ORDER BY created_at DESC LIMIT ?", limit)
 	if err != nil {
 		return nil, err
 	}
@@ -233,39 +185,14 @@ func (s *Store) GetTrends(limit int) ([]*Trend, error) {
 	var trends []*Trend
 	for rows.Next() {
 		var t Trend
-		var createdAt int64
-		if err := rows.Scan(&t.ID, &t.Keyword, &t.SearchVolume, &t.GrowthRate, &t.Competition, &t.Opportunity, &t.Category, &createdAt); err != nil {
-			return nil, err
+		if err := rows.Scan(&t.ID, &t.Keyword, &t.Month, &t.SearchVolume, &t.GrowthRate, &t.Competition, &t.Opportunity); err != nil {
+			continue
 		}
-		t.CreatedAt = time.Unix(createdAt, 0)
 		trends = append(trends, &t)
 	}
-	return trends, nil
+	return trends, rows.Err()
 }
 
-func (s *Store) GetAnalytics() (map[string]interface{}, error) {
-	var totalProducts int
-	s.db.QueryRow("SELECT COUNT(*) FROM products").Scan(&totalProducts)
-
-	var avgScore float64
-	s.db.QueryRow("SELECT COALESCE(AVG(score), 0) FROM products").Scan(&avgScore)
-
-	var categoryCounts []struct {
-		Category string
-		Count    int
-	}
-	rows, _ := s.db.Query("SELECT category, COUNT(*) as count FROM products GROUP BY category ORDER BY count DESC LIMIT 5")
-	defer rows.Close()
-	for rows.Next() {
-		var c struct{ Category string; Count int }
-		rows.Scan(&c.Category, &c.Count)
-		categoryCounts = append(categoryCounts, c)
-	}
-
-	return map[string]interface{}{
-		"total_products":   totalProducts,
-		"avg_score":        avgScore,
-		"top_categories":   categoryCounts,
-		"total_competitors": len(categoryCounts),
-	}, nil
+func (s *Store) Close() error {
+	return s.db.Close()
 }
