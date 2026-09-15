@@ -11,7 +11,7 @@ import (
 	"ai-product-research/internal/store"
 )
 
-func SetupRoutes(r *gin.Engine, s *store.Store) {
+func SetupRoutes(r *gin.Engine, s *store.Store, sc *scheduler.Manager) {
 	r.Use(corsMiddleware())
 
 	// Scraper endpoints
@@ -63,11 +63,12 @@ func SetupRoutes(r *gin.Engine, s *store.Store) {
 	// Products endpoints
 	r.GET("/api/products", func(c *gin.Context) {
 		category := c.Query("category")
+		query := c.Query("query")
 		limit := 50
 		if l := c.Query("limit"); l != "" {
 			fmt.Sscanf(l, "%d", &limit)
 		}
-		products, err := s.GetProducts(category, limit)
+		products, err := s.SearchProducts(query, category, limit)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 			return
@@ -193,6 +194,25 @@ func SetupRoutes(r *gin.Engine, s *store.Store) {
 			{"id": "productivity", "name": "Productivity", "description": "For productivity and workflow tools"},
 		}
 		c.JSON(http.StatusOK, templates)
+	})
+
+	// Scheduler endpoints
+	r.GET("/api/scheduler/status", func(c *gin.Context) {
+		schedule := sc.GetSchedule()
+		nextRun, _ := sc.GetNextRun()
+		c.JSON(http.StatusOK, gin.H{
+			"schedule": schedule,
+			"next_run": nextRun,
+		})
+	})
+
+	r.POST("/api/scheduler/run", func(c *gin.Context) {
+		// 手动触发一次爬虫
+		go func() {
+			products, _ := scraper.FetchToolify("")
+			log.Printf("Manual fetch: %d products", len(products))
+		}()
+		c.JSON(http.StatusOK, gin.H{"message": "Scraper started"})
 	})
 }
 

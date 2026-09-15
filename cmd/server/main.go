@@ -6,6 +6,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"ai-product-research/internal/api"
+	"ai-product-research/internal/scheduler"
 	"ai-product-research/internal/store"
 )
 

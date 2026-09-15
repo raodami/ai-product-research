@@ -45,17 +45,18 @@ type Trend struct {
 }
 
 type Store struct {
-	db *sql.DB
+	db         *sql.DB
+	productMu  sync.RWMutex
 }
 
-func NewDB(path string) (*Store, error) {
-	db, err := sql.Open("sqlite", path)
+func New(dbPath string) (*Store, error) {
+	db, err := sql.Open("sqlite", dbPath)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to open database: %w", err)
 	}
 
 	store := &Store{db: db}
-	if err := store.createTables(); err != nil {
+	if err := store.initSchema(); err != nil {
 		return nil, err
 	}
 	return store, nil
@@ -128,22 +129,43 @@ func (s *Store) GetProducts(category string, limit int) ([]*Product, error) {
 		sqlStr = "SELECT id, name, description, website, category, price, users, founded, features, score, source, created_at FROM products ORDER BY score DESC LIMIT ?"
 		args = append(args, limit)
 	}
+	func (s *Store) SearchProducts(query, category string, limit int) ([]*Product, error) {
+		s.productMu.RLock()
+		defer s.productMu.RUnlock()
 
-	rows, err := s.db.Query(sqlStr, args...)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
+		queryStr := "SELECT id, name, description, website, category, price, users FROM products WHERE 1=1"
+		args := []interface{}{}
 
-	var products []*Product
-	for rows.Next() {
-		var p Product
-		var createdAt int64
-		if err := rows.Scan(&p.ID, &p.Name, &p.Description, &p.Website, &p.Category, &p.Price, &p.Users, &p.Founded, &p.Features, &p.Score, &p.Source, &createdAt); err != nil {
+		if query != "" {
+			queryStr += " AND (name LIKE ? OR description LIKE ?)"
+			args = append(args, "%"+query+"%", "%"+query+"%")
+		}
+		if category != "" {
+			queryStr += " AND category = ?"
+			args = append(args, category)
+		}
+		queryStr += " ORDER BY created_at DESC LIMIT ?"
+		args = append(args, limit)
+
+		rows, err := s.db.Query(queryStr, args...)
+		if err != nil {
 			return nil, err
 		}
-		p.CreatedAt = time.Unix(createdAt, 0)
-		products = append(products, &p)
+		defer rows.Close()
+
+		var products []*Product
+		for rows.Next() {
+			var p Product
+			if err := rows.Scan(&p.ID, &p.Name, &p.Description, &p.Website, &p.Category, &p.Price, &p.Users); err != nil {
+				continue
+			}
+			products = append(products, &p)
+		}
+		return products, rows.Err()
+	}
+
+	func (s *Store) GetProducts(category string, limit int) ([]*Product, error) {
+		return s.SearchProducts("", category, limit)
 	}
 	return products, nil
 }
