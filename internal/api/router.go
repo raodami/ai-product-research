@@ -2,7 +2,6 @@ package api
 
 import (
 	"net/http"
-	"strconv"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -12,7 +11,6 @@ import (
 )
 
 func SetupRoutes(r *gin.Engine, s *store.Store) {
-	r.Use(corsMiddleware())
 
 	// Scraper endpoints
 	r.GET("/api/scraper/toolify", func(c *gin.Context) {
@@ -167,9 +165,8 @@ func SetupRoutes(r *gin.Engine, s *store.Store) {
 
 	r.GET("/api/export/report", func(c *gin.Context) {
 		products, _ := s.GetProducts("", 50)
-		trends, _ := s.GetTrends(10)
 		
-		report, err := analyzer.GenerateReport(products, trends)
+		report, err := analyzer.GenerateReport(products)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 			return
