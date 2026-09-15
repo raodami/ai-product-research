@@ -16,6 +16,9 @@ import (
 func SetupRoutes(r *gin.Engine, s *store.Store, sc *scheduler.Manager) {
 	r.Use(corsMiddleware())
 
+	// Initialize DeepSeek client
+	ds := analyzer.NewDeepSeekClient()
+
 	// Scraper endpoints
 	r.GET("/api/scraper/toolify", func(c *gin.Context) {
 		products, err := scraper.FetchToolify("")
@@ -104,66 +107,110 @@ func SetupRoutes(r *gin.Engine, s *store.Store, sc *scheduler.Manager) {
 
 	// Analytics endpoint
 	r.GET("/api/analytics", func(c *gin.Context) {
-		analytics, err := s.GetAnalytics()
+		data, err := s.GetAnalytics()
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 			return
 		}
-		c.JSON(http.StatusOK, analytics)
+		c.JSON(http.StatusOK, data)
 	})
 
-	// Competitors endpoint
-	r.GET("/api/competitors", func(c *gin.Context) {
-		limit := 20
-		if l := c.Query("limit"); l != "" {
-			fmt.Sscanf(l, "%d", &limit)
-		}
-		competitors, err := s.GetCompetitors(limit)
-		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-			return
-		}
-		c.JSON(http.StatusOK, competitors)
-	})
-
-	// Analysis endpoints
+	// Opportunity analysis endpoint (uses DeepSeek API if configured)
 	r.POST("/api/analyze/opportunity", func(c *gin.Context) {
 		var req struct {
-			Keyword string `json:"keyword" binding:"required"`
+			Keyword string `json:"keyword"`
 		}
-		if err := c.ShouldBindJSON(&req); err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		if err := c.ShouldBindJSON(&req); err != nil || req.Keyword == "" {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "keyword is required"})
 			return
 		}
-		
-		opp, err := analyzer.AnalyzeOpportunity(req.Keyword)
+
+		// Use DeepSeek if API key is configured
+		if ds != nil && ds.APIKey != "" {
+			result, err := ds.AnalyzeOpportunity(req.Keyword)
+			if err == nil && result != "" {
+				c.JSON(http.StatusOK, gin.H{
+					"keyword": req.Keyword,
+					"analysis": result,
+					"source": "deepseek",
+				})
+				return
+			}
+			log.Printf("DeepSeek API error: %v, falling back to mock", err)
+		}
+
+		// Fallback to mock analysis
+		opportunity, err := analyzer.AnalyzeOpportunity(req.Keyword)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 			return
 		}
-		c.JSON(http.StatusOK, opp)
+		c.JSON(http.StatusOK, opportunity)
 	})
 
+	// Competitor analysis endpoint
 	r.POST("/api/analyze/competitor", func(c *gin.Context) {
 		var req struct {
-			Company string `json:"company" binding:"required"`
+			Company string `json:"company"`
 		}
-		if err := c.ShouldBindJSON(&req); err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		if err := c.ShouldBindJSON(&req); err != nil || req.Company == "" {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "company name is required"})
 			return
 		}
-		
-		comp, err := analyzer.AnalyzeCompetitor(req.Company)
+
+		// Use DeepSeek if API key is configured
+		if ds != nil && ds.APIKey != "" {
+			result, err := ds.AnalyzeCompetitor(req.Company)
+			if err == nil && result != "" {
+				c.JSON(http.StatusOK, gin.H{
+					"company": req.Company,
+					"analysis": result,
+					"source": "deepseek",
+				})
+				return
+			}
+			log.Printf("DeepSeek API error: %v, falling back to mock", err)
+		}
+
+		// Fallback to mock analysis
+		analysis, err := analyzer.AnalyzeCompetitor(req.Company)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 			return
 		}
-		c.JSON(http.StatusOK, comp)
+		c.JSON(http.StatusOK, analysis)
+	})
+
+	// Strategy generation endpoint
+	r.POST("/api/analyze/strategy", func(c *gin.Context) {
+		var req struct {
+			Topic string `json:"topic"`
+		}
+		if err := c.ShouldBindJSON(&req); err != nil || req.Topic == "" {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "topic is required"})
+			return
+		}
+
+		// Use DeepSeek if API key is configured
+		if ds != nil && ds.APIKey != "" {
+			result, err := ds.GenerateStrategy(req.Topic)
+			if err == nil && result != "" {
+				c.JSON(http.StatusOK, gin.H{
+					"topic": req.Topic,
+					"strategy": result,
+					"source": "deepseek",
+				})
+				return
+			}
+			log.Printf("DeepSeek API error: %v", err)
+		}
+
+		c.JSON(http.StatusOK, gin.H{"error": "DeepSeek API not configured"})
 	})
 
 	// Export endpoints
 	r.GET("/api/export/csv", func(c *gin.Context) {
-		products, _ := s.GetProducts("", 100)
+		products, _ := s.GetProducts("", 50)
 		csv, err := analyzer.ExportCSV(products)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
@@ -176,8 +223,9 @@ func SetupRoutes(r *gin.Engine, s *store.Store, sc *scheduler.Manager) {
 
 	r.GET("/api/export/report", func(c *gin.Context) {
 		products, _ := s.GetProducts("", 50)
+		trends, _ := s.GetTrends(10)
 		
-		report, err := analyzer.GenerateReport(products)
+		report, err := analyzer.GenerateReport(products, trends)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 			return
