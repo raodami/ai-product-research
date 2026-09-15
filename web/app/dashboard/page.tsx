@@ -9,8 +9,11 @@ import {
   MagnifyingGlassIcon,
   FunnelIcon,
   CalendarIcon,
+  SparklesIcon,
 } from '@heroicons/react/24/outline';
 import Link from 'next/link';
+import { TrendLineChart, CategoryBarChart, OpportunityPieChart } from '@/components/charts';
+import PWASetup from '@/components/pwa-setup';
 
 interface Product {
   id: string;
@@ -32,14 +35,22 @@ interface Opportunity {
   suggestions: string[];
 }
 
+interface Trend {
+  keyword: string;
+  search_volume: number;
+  growth_rate: number;
+  opportunity: number;
+}
+
 export default function Dashboard() {
   const router = useRouter();
   const [products, setProducts] = useState<Product[]>([]);
   const [opportunities, setOpportunities] = useState<Opportunity[]>([]);
+  const [trends, setTrends] = useState<Trend[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [category, setCategory] = useState('');
-  const [activeTab, setActiveTab] = useState<'products' | 'trends'>('products');
+  const [activeTab, setActiveTab] = useState<'products' | 'trends' | 'analytics'>('products');
   const [analysisKeyword, setAnalysisKeyword] = useState('');
   const [analyzing, setAnalyzing] = useState(false);
   const [schedule, setSchedule] = useState<string[]>([]);
@@ -51,8 +62,9 @@ export default function Dashboard() {
 
   const fetchData = async () => {
     try {
-      const [productsRes, oppRes] = await Promise.all([
+      const [productsRes, oppRes, trendsRes] = await Promise.all([
         fetch('/api/products?limit=50'),
+        fetch('/api/trends'),
         fetch('/api/trends'),
       ]);
       
@@ -64,6 +76,11 @@ export default function Dashboard() {
       if (oppRes.ok) {
         const data = await oppRes.json();
         setOpportunities(data);
+      }
+
+      if (trendsRes.ok) {
+        const data = await trendsRes.json();
+        setTrends(data);
       }
     } catch (error) {
       console.error('Failed to fetch data:', error);
@@ -146,8 +163,16 @@ export default function Dashboard() {
 
   const categories = ['All', 'AI Tools', 'SaaS', 'Dev Tools', 'Productivity', 'Marketing'];
 
+  const categoryCounts = products.reduce((acc, p) => {
+    acc[p.category] = (acc[p.category] || 0) + 1;
+    return acc;
+  }, {} as Record<string, number>);
+
+  const categoryData = Object.entries(categoryCounts).map(([name, value]) => ({ name, value }));
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900">
+      <PWASetup />
       <div className="max-w-7xl mx-auto px-4 py-8">
         {/* Header */}
         <div className="flex justify-between items-center mb-8">
@@ -266,6 +291,16 @@ export default function Dashboard() {
           >
             Trends & Opportunities ({opportunities.length})
           </button>
+          <button
+            onClick={() => setActiveTab('analytics')}
+            className={`px-6 py-3 rounded-lg font-medium transition-all ${
+              activeTab === 'analytics'
+                ? 'bg-purple-600 text-white'
+                : 'bg-slate-800/50 text-gray-400 hover:text-white'
+            }`}
+          >
+            Analytics
+          </button>
         </div>
 
         {/* Content */}
@@ -320,7 +355,7 @@ export default function Dashboard() {
                         </span>
                       </td>
                       <td className="px-6 py-4 text-gray-300">{product.price}</td>
-                      <td className="px-6 py-4 text-gray-300">{product.users.toLocaleString()}</td>
+                      <td className="px-6 py-4 text-gray-300">{product.users?.toLocaleString() ?? 'N/A'}</td>
                       <td className="px-6 py-4">
                         <a
                           href={product.website}
@@ -337,7 +372,7 @@ export default function Dashboard() {
               </table>
             </div>
           </div>
-        ) : (
+        ) : activeTab === 'trends' ? (
           <div className="space-y-6">
             {/* Analysis Input */}
             <div className="bg-slate-800/50 backdrop-blur rounded-xl p-6 border border-purple-500/20">
@@ -350,13 +385,13 @@ export default function Dashboard() {
                   onChange={(e) => setAnalysisKeyword(e.target.value)}
                   onKeyDown={(e) => e.key === 'Enter' && handleAnalyze()}
                   className="flex-1 px-4 py-3 bg-slate-900/50 border border-purple-500/30 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:border-purple-500"
-                >
-                </input>
+                />
                 <button
                   onClick={handleAnalyze}
                   disabled={analyzing || !analysisKeyword}
-                  className="px-6 py-3 bg-purple-600 hover:bg-purple-700 disabled:bg-gray-600 disabled:cursor-not-allowed text-white rounded-lg transition-all font-medium"
+                  className="px-6 py-3 bg-purple-600 hover:bg-purple-700 disabled:bg-gray-600 disabled:cursor-not-allowed text-white rounded-lg transition-all font-medium flex items-center gap-2"
                 >
+                  <SparklesIcon className="w-5 h-5" />
                   {analyzing ? 'Analyzing...' : 'Analyze'}
                 </button>
               </div>
@@ -424,6 +459,41 @@ export default function Dashboard() {
                   ))
                 )}
               </div>
+            </div>
+          </div>
+        ) : (
+          <div className="space-y-6">
+            {/* Charts Section */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              {/* Trend Line Chart */}
+              <div className="bg-slate-800/50 backdrop-blur rounded-xl p-6 border border-purple-500/20">
+                <h3 className="text-lg font-semibold text-white mb-4">Search Trends</h3>
+                {trends.length > 0 ? (
+                  <TrendLineChart data={trends} />
+                ) : (
+                  <p className="text-gray-400 text-center py-8">No trend data available</p>
+                )}
+              </div>
+
+              {/* Category Distribution */}
+              <div className="bg-slate-800/50 backdrop-blur rounded-xl p-6 border border-purple-500/20">
+                <h3 className="text-lg font-semibold text-white mb-4">Categories</h3>
+                {categoryData.length > 0 ? (
+                  <CategoryBarChart data={categoryData} />
+                ) : (
+                  <p className="text-gray-400 text-center py-8">No category data available</p>
+                )}
+              </div>
+            </div>
+
+            {/* Opportunity Distribution */}
+            <div className="bg-slate-800/50 backdrop-blur rounded-xl p-6 border border-purple-500/20">
+              <h3 className="text-lg font-semibold text-white mb-4">Opportunity Distribution</h3>
+              {categoryData.length > 0 ? (
+                <OpportunityPieChart data={categoryData} />
+              ) : (
+                <p className="text-gray-400 text-center py-8">No data available</p>
+              )}
             </div>
           </div>
         )}
