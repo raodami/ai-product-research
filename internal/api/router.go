@@ -2,11 +2,13 @@ package api
 
 import (
 	"fmt"
+	"log"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"ai-product-research/internal/analyzer"
+	"ai-product-research/internal/scheduler"
 	"ai-product-research/internal/scraper"
 	"ai-product-research/internal/store"
 )

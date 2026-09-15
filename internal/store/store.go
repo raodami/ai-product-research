@@ -193,6 +193,11 @@ func (s *Store) GetTrends(limit int) ([]*Trend, error) {
 	return trends, rows.Err()
 }
 
+func (s *Store) DeleteProduct(id string) error {
+	_, err := s.db.Exec("DELETE FROM products WHERE id = ?", id)
+	return err
+}
+
 func (s *Store) Close() error {
 	return s.db.Close()
 }
