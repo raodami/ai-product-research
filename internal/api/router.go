@@ -1,6 +1,7 @@
 package api
 
 import (
+	"fmt"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
@@ -11,6 +12,7 @@ import (
 )
 
 func SetupRoutes(r *gin.Engine, s *store.Store) {
+	r.Use(corsMiddleware())
 
 	// Scraper endpoints
 	r.GET("/api/scraper/toolify", func(c *gin.Context) {
@@ -61,7 +63,10 @@ func SetupRoutes(r *gin.Engine, s *store.Store) {
 	// Products endpoints
 	r.GET("/api/products", func(c *gin.Context) {
 		category := c.Query("category")
-		limit, _ := strconv.Atoi(c.DefaultQuery("limit", "50"))
+		limit := 50
+		if l := c.Query("limit"); l != "" {
+			fmt.Sscanf(l, "%d", &limit)
+		}
 		products, err := s.GetProducts(category, limit)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
@@ -106,7 +111,10 @@ func SetupRoutes(r *gin.Engine, s *store.Store) {
 
 	// Competitors endpoint
 	r.GET("/api/competitors", func(c *gin.Context) {
-		limit, _ := strconv.Atoi(c.DefaultQuery("limit", "20"))
+		limit := 20
+		if l := c.Query("limit"); l != "" {
+			fmt.Sscanf(l, "%d", &limit)
+		}
 		competitors, err := s.GetCompetitors(limit)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
