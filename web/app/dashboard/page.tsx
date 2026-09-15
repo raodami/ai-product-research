@@ -10,6 +10,9 @@ import {
   FunnelIcon,
   CalendarIcon,
   SparklesIcon,
+  AcademicCapIcon,
+  UserGroupIcon,
+  CurrencyDollarIcon,
 } from '@heroicons/react/24/outline';
 import Link from 'next/link';
 import { TrendLineChart, CategoryBarChart, OpportunityPieChart } from '@/components/charts';
@@ -35,6 +38,12 @@ interface Opportunity {
   suggestions: string[];
 }
 
+interface AIAnalysis {
+  keyword: string;
+  analysis: string;
+  source: string;
+}
+
 interface Trend {
   keyword: string;
   search_volume: number;
@@ -46,13 +55,18 @@ export default function Dashboard() {
   const router = useRouter();
   const [products, setProducts] = useState<Product[]>([]);
   const [opportunities, setOpportunities] = useState<Opportunity[]>([]);
+  const [aiAnalyses, setAiAnalyses] = useState<AIAnalysis[]>([]);
   const [trends, setTrends] = useState<Trend[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [category, setCategory] = useState('');
-  const [activeTab, setActiveTab] = useState<'products' | 'trends' | 'analytics'>('products');
+  const [activeTab, setActiveTab] = useState<'products' | 'trends' | 'analytics' | 'ai'>('products');
   const [analysisKeyword, setAnalysisKeyword] = useState('');
+  const [competitorName, setCompetitorName] = useState('');
+  const [strategyTopic, setStrategyTopic] = useState('');
   const [analyzing, setAnalyzing] = useState(false);
+  const [analyzingCompetitor, setAnalyzingCompetitor] = useState(false);
+  const [generatingStrategy, setGeneratingStrategy] = useState(false);
   const [schedule, setSchedule] = useState<string[]>([]);
 
   useEffect(() => {
@@ -134,7 +148,7 @@ export default function Dashboard() {
       
       if (res.ok) {
         const data = await res.json();
-        setOpportunities([data, ...opportunities]);
+        setAiAnalyses([data, ...aiAnalyses]);
         setAnalysisKeyword('');
       }
     } catch (error) {
@@ -144,12 +158,54 @@ export default function Dashboard() {
     }
   };
 
-  const handleExportCSV = async () => {
-    window.open('/api/export/csv', '_blank');
+  const handleAnalyzeCompetitor = async () => {
+    if (!competitorName) return;
+    
+    setAnalyzingCompetitor(true);
+    try {
+      const res = await fetch('/api/analyze/competitor', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ company: competitorName }),
+      });
+      
+      if (res.ok) {
+        const data = await res.json();
+        setAiAnalyses([data, ...aiAnalyses]);
+        setCompetitorName('');
+      }
+    } catch (error) {
+      console.error('Competitor analysis failed:', error);
+    } finally {
+      setAnalyzingCompetitor(false);
+    }
   };
 
-  const handleExportReport = async () => {
-    window.open('/api/export/report', '_blank');
+  const handleGenerateStrategy = async () => {
+    if (!strategyTopic) return;
+    
+    setGeneratingStrategy(true);
+    try {
+      const res = await fetch('/api/analyze/strategy', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ topic: strategyTopic }),
+      });
+      
+      if (res.ok) {
+        const data = await res.json();
+        setAiAnalyses([data, ...aiAnalyses]);
+        setStrategyTopic('');
+      }
+    } catch (error) {
+      console.error('Strategy generation failed:', error);
+    } finally {
+      setGeneratingStrategy(false);
+    }
+  };
+
+  const handleExportCSV = async () => {
+    window.open('/api/export/csv', '_blank');
   };
 
   const handleRunScraper = async () => {
@@ -169,6 +225,13 @@ export default function Dashboard() {
   }, {} as Record<string, number>);
 
   const categoryData = Object.entries(categoryCounts).map(([name, value]) => ({ name, value }));
+
+  const aiSourceBadge = (source: string) => {
+    if (source === 'deepseek') {
+      return <span className="px-2 py-1 bg-purple-500/20 text-purple-300 rounded text-xs">AI</span>;
+    }
+    return <span className="px-2 py-1 bg-gray-500/20 text-gray-400 rounded text-xs">Mock</span>;
+  };
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900">
@@ -213,10 +276,10 @@ export default function Dashboard() {
           <div className="bg-slate-800/50 backdrop-blur rounded-xl p-6 border border-purple-500/20">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-purple-300 text-sm">Scheduled Tasks</p>
-                <p className="text-3xl font-bold text-white">{schedule.length}</p>
+                <p className="text-purple-300 text-sm">AI Analyses</p>
+                <p className="text-3xl font-bold text-white">{aiAnalyses.length}</p>
               </div>
-              <CalendarIcon className="w-10 h-10 text-blue-400" />
+              <SparklesIcon className="w-10 h-10 text-yellow-400" />
             </div>
           </div>
           
@@ -270,36 +333,50 @@ export default function Dashboard() {
         </div>
 
         {/* Tabs */}
-        <div className="flex gap-4 mb-6">
+        <div className="flex gap-4 mb-6 overflow-x-auto">
           <button
             onClick={() => setActiveTab('products')}
-            className={`px-6 py-3 rounded-lg font-medium transition-all ${
+            className={`px-6 py-3 rounded-lg font-medium transition-all whitespace-nowrap ${
               activeTab === 'products'
                 ? 'bg-purple-600 text-white'
                 : 'bg-slate-800/50 text-gray-400 hover:text-white'
             }`}
           >
+            <ChartBarIcon className="w-4 h-4 inline mr-2" />
             Products ({products.length})
           </button>
           <button
             onClick={() => setActiveTab('trends')}
-            className={`px-6 py-3 rounded-lg font-medium transition-all ${
+            className={`px-6 py-3 rounded-lg font-medium transition-all whitespace-nowrap ${
               activeTab === 'trends'
                 ? 'bg-purple-600 text-white'
                 : 'bg-slate-800/50 text-gray-400 hover:text-white'
             }`}
           >
+            <ArrowTrendingUpIcon className="w-4 h-4 inline mr-2" />
             Trends & Opportunities ({opportunities.length})
           </button>
           <button
             onClick={() => setActiveTab('analytics')}
-            className={`px-6 py-3 rounded-lg font-medium transition-all ${
+            className={`px-6 py-3 rounded-lg font-medium transition-all whitespace-nowrap ${
               activeTab === 'analytics'
                 ? 'bg-purple-600 text-white'
                 : 'bg-slate-800/50 text-gray-400 hover:text-white'
             }`}
           >
+            <AcademicCapIcon className="w-4 h-4 inline mr-2" />
             Analytics
+          </button>
+          <button
+            onClick={() => setActiveTab('ai')}
+            className={`px-6 py-3 rounded-lg font-medium transition-all whitespace-nowrap ${
+              activeTab === 'ai'
+                ? 'bg-purple-600 text-white'
+                : 'bg-slate-800/50 text-gray-400 hover:text-white'
+            }`}
+          >
+            <SparklesIcon className="w-4 h-4 inline mr-2" />
+            AI Analysis ({aiAnalyses.length})
           </button>
         </div>
 
@@ -412,56 +489,8 @@ export default function Dashboard() {
                 ))}
               </ul>
             </div>
-
-            {/* Opportunities */}
-            <div className="bg-slate-800/50 backdrop-blur rounded-xl border border-purple-500/20 overflow-hidden">
-              <div className="p-4 border-b border-purple-500/20">
-                <h2 className="text-xl font-semibold text-white">Opportunities</h2>
-              </div>
-              <div className="p-6 space-y-4">
-                {opportunities.length === 0 ? (
-                  <p className="text-gray-400 text-center py-8">No opportunities analyzed yet. Enter a keyword above.</p>
-                ) : (
-                  opportunities.map((opp, idx) => (
-                    <div key={idx} className="bg-slate-900/50 rounded-lg p-4 border border-purple-500/10">
-                      <div className="flex justify-between items-start mb-3">
-                        <h3 className="text-lg font-semibold text-white">{opp.keyword}</h3>
-                        <span className={`px-3 py-1 rounded-full text-sm font-medium ${
-                          opp.opportunity_score >= 70 ? 'bg-green-500/20 text-green-400' :
-                          opp.opportunity_score >= 50 ? 'bg-yellow-500/20 text-yellow-400' :
-                          'bg-red-500/20 text-red-400'
-                        }`}>
-                          Score: {opp.opportunity_score}%
-                        </span>
-                      </div>
-                      <div className="grid grid-cols-3 gap-4 mb-3">
-                        <div>
-                          <p className="text-purple-300 text-sm">Market Size</p>
-                          <p className="text-white font-medium">{opp.market_size}</p>
-                        </div>
-                        <div>
-                          <p className="text-purple-300 text-sm">Competition</p>
-                          <p className="text-white font-medium">{opp.competition}</p>
-                        </div>
-                        <div>
-                          <p className="text-purple-300 text-sm">Trend</p>
-                          <p className="text-white font-medium">{opp.trend}</p>
-                        </div>
-                      </div>
-                      <p className="text-gray-400 text-sm">{opp.reasoning}</p>
-                      <div className="mt-3">
-                        <p className="text-purple-300 text-sm mb-2">Suggestions:</p>
-                        <ul className="list-disc list-inside text-gray-300 text-sm space-y-1">
-                          {opp.suggestions.map((s, i) => <li key={i}>{s}</li>)}
-                        </ul>
-                      </div>
-                    </div>
-                  ))
-                )}
-              </div>
-            </div>
           </div>
-        ) : (
+        ) : activeTab === 'analytics' ? (
           <div className="space-y-6">
             {/* Charts Section */}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -494,6 +523,144 @@ export default function Dashboard() {
               ) : (
                 <p className="text-gray-400 text-center py-8">No data available</p>
               )}
+            </div>
+          </div>
+        ) : (
+          <div className="space-y-6">
+            {/* AI Analysis Inputs */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              {/* Market Opportunity */}
+              <div className="bg-slate-800/50 backdrop-blur rounded-xl p-6 border border-purple-500/20">
+                <div className="flex items-center gap-2 mb-4">
+                  <SparklesIcon className="w-6 h-6 text-purple-400" />
+                  <h3 className="text-lg font-semibold text-white">Market Opportunity</h3>
+                </div>
+                <input
+                  type="text"
+                  placeholder="e.g., AI writing assistant"
+                  value={analysisKeyword}
+                  onChange={(e) => setAnalysisKeyword(e.target.value)}
+                  className="w-full px-4 py-3 bg-slate-900/50 border border-purple-500/30 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:border-purple-500 mb-3"
+                />
+                <button
+                  onClick={handleAnalyze}
+                  disabled={analyzing || !analysisKeyword}
+                  className="w-full px-4 py-3 bg-purple-600 hover:bg-purple-700 disabled:bg-gray-600 disabled:cursor-not-allowed text-white rounded-lg transition-all font-medium flex items-center justify-center gap-2"
+                >
+                  {analyzing ? (
+                    <>
+                      <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                      Analyzing...
+                    </>
+                  ) : (
+                    <>
+                      <SparklesIcon className="w-5 h-5" />
+                      Analyze
+                    </>
+                  )}
+                </button>
+              </div>
+
+              {/* Competitor Analysis */}
+              <div className="bg-slate-800/50 backdrop-blur rounded-xl p-6 border border-purple-500/20">
+                <div className="flex items-center gap-2 mb-4">
+                  <UserGroupIcon className="w-6 h-6 text-blue-400" />
+                  <h3 className="text-lg font-semibold text-white">Competitor Analysis</h3>
+                </div>
+                <input
+                  type="text"
+                  placeholder="e.g., Jasper AI"
+                  value={competitorName}
+                  onChange={(e) => setCompetitorName(e.target.value)}
+                  onKeyDown={(e) => e.key === 'Enter' && handleAnalyzeCompetitor()}
+                  className="w-full px-4 py-3 bg-slate-900/50 border border-purple-500/30 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:border-purple-500 mb-3"
+                />
+                <button
+                  onClick={handleAnalyzeCompetitor}
+                  disabled={analyzingCompetitor || !competitorName}
+                  className="w-full px-4 py-3 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-600 disabled:cursor-not-allowed text-white rounded-lg transition-all font-medium flex items-center justify-center gap-2"
+                >
+                  {analyzingCompetitor ? (
+                    <>
+                      <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                      Analyzing...
+                    </>
+                  ) : (
+                    <>
+                      <UserGroupIcon className="w-5 h-5" />
+                      Analyze
+                    </>
+                  )}
+                </button>
+              </div>
+
+              {/* Strategy Generation */}
+              <div className="bg-slate-800/50 backdrop-blur rounded-xl p-6 border border-purple-500/20">
+                <div className="flex items-center gap-2 mb-4">
+                  <CurrencyDollarIcon className="w-6 h-6 text-green-400" />
+                  <h3 className="text-lg font-semibold text-white">Strategy Plan</h3>
+                </div>
+                <input
+                  type="text"
+                  placeholder="e.g., AI-powered resume builder"
+                  value={strategyTopic}
+                  onChange={(e) => setStrategyTopic(e.target.value)}
+                  onKeyDown={(e) => e.key === 'Enter' && handleGenerateStrategy()}
+                  className="w-full px-4 py-3 bg-slate-900/50 border border-purple-500/30 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:border-purple-500 mb-3"
+                />
+                <button
+                  onClick={handleGenerateStrategy}
+                  disabled={generatingStrategy || !strategyTopic}
+                  className="w-full px-4 py-3 bg-green-600 hover:bg-green-700 disabled:bg-gray-600 disabled:cursor-not-allowed text-white rounded-lg transition-all font-medium flex items-center justify-center gap-2"
+                >
+                  {generatingStrategy ? (
+                    <>
+                      <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                      Generating...
+                    </>
+                  ) : (
+                    <>
+                      <CurrencyDollarIcon className="w-5 h-5" />
+                      Generate
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
+
+            {/* AI Analysis Results */}
+            <div className="bg-slate-800/50 backdrop-blur rounded-xl border border-purple-500/20 overflow-hidden">
+              <div className="p-4 border-b border-purple-500/20">
+                <h2 className="text-xl font-semibold text-white flex items-center gap-2">
+                  <SparklesIcon className="w-6 h-6 text-yellow-400" />
+                  AI Analysis Results
+                </h2>
+              </div>
+              <div className="p-6 space-y-4">
+                {aiAnalyses.length === 0 ? (
+                  <div className="text-center py-12">
+                    <SparklesIcon className="w-16 h-16 text-gray-600 mx-auto mb-4" />
+                    <p className="text-gray-400">Use the tools above to generate AI-powered analyses</p>
+                    <p className="text-sm text-gray-500 mt-2">Configure DEEPSEEK_API_KEY in .env file for real AI analysis</p>
+                  </div>
+                ) : (
+                  aiAnalyses.map((analysis, idx) => (
+                    <div key={idx} className="bg-slate-900/50 rounded-lg p-4 border border-purple-500/10">
+                      <div className="flex justify-between items-start mb-3">
+                        <div className="flex items-center gap-3">
+                          <h3 className="text-lg font-semibold text-white">{analysis.keyword}</h3>
+                          {aiSourceBadge(analysis.source)}
+                        </div>
+                      </div>
+                      <div className="prose prose-invert max-w-none">
+                        <pre className="whitespace-pre-wrap text-gray-300 text-sm font-mono bg-slate-950/50 p-4 rounded-lg">
+                          {analysis.analysis}
+                        </pre>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
             </div>
           </div>
         )}
